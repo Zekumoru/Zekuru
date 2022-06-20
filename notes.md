@@ -38,3 +38,15 @@ client.on('interactionCreate', async (interaction) => {
 Deleting is a bit tricky, basically, get the command's ID by using it first on Discord and printing out the ID from `interaction.commandId`.
 
 Then use that id to delete the command through `guild.commands.delete('commandId')`.
+
+### Misc
+
+```javascript
+if (message.content === "-create usage commands") {
+    setupDiscordCommands();
+    message.reply({
+        embeds: [new MessageEmbed().setTitle("Setup successful!").setDescription("Usage commands have been successfully implemented on this guild.").setColor('BLUE')]
+    })
+    return;
+}
+```

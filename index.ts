@@ -37,11 +37,10 @@ client.on('ready', () => {
     englishChannel = client.channels.cache.get(ChannelIds.english) as TextChannel;
     chineseChannel = client.channels.cache.get(ChannelIds.chinese) as TextChannel;
     koreanChannel = client.channels.cache.get(ChannelIds.korean) as TextChannel;
-    setupDiscordCommands();
 })
 
 function setupDiscordCommands() {
-    const guildId = "987752925688389672"
+    const guildId = "983293851928244264"
     const guild = client.guilds.cache.get(guildId)
     let commands
 
@@ -50,6 +49,16 @@ function setupDiscordCommands() {
     } else {
         commands = client.application?.commands
     }
+
+    commands?.create({
+        name: 'deepl-usage',
+        description: "Returns the usage count for DeepL's translation service."
+    })
+
+    commands?.create({
+        name: 'google-usage',
+        description: "Returns the usage count for Google's Cloud Translate's translation service."
+    })
 }
 
 client.on('interactionCreate', async (interaction) => {
