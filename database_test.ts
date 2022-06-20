@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const usage = {
-    characterUsed: 20,
-    characterLimit: 500000
+    characterUsed: 200,
+    characterLimit: 400000
 };
 
 (async () => {
