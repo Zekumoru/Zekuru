@@ -1,0 +1,47 @@
+client.on('messageCreate', (message) => {
+    if (message.author.bot) return
+
+    if (message.content === "get-deepl-usage") {
+        (async () => {
+            const usage = await deeplTranslator.getUsage();
+            if (usage.character) {
+                message.reply({
+                    content: `Characters used: ${usage.character.count}\nRemaining: ${usage.character.limit - usage.character.count}`
+                })
+            }
+        })();
+        return
+    }
+
+    const channel =  client.channels.cache.get(message.channelId)
+
+    const embed = new MessageEmbed()
+        .setAuthor({
+            name: message.author.username,
+            iconURL: message.author.avatarURL() || ""
+        })
+        .setDescription(message.content)
+        .setColor('BLUE');
+
+    message.channel.send({
+        embeds: [embed]
+    })
+
+    /*(async () => {
+        const [translation] = await googleTranslator.translate(message.content, "zh");
+        message.reply({
+            content: `Translation: ${translation}`
+        })
+    })();*/
+
+    /*(async () => {
+        const result = await deeplTranslator.translateText(message.content, null, 'zh');
+        message.reply({
+            content: result.text + "\nTranslated from: " + result.detectedSourceLang
+        })
+    })();*/
+
+    /*message.reply({
+        content: "You said: " + message.content
+    })*/
+})
