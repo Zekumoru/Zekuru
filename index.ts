@@ -3,8 +3,10 @@ import { MongoClient } from 'mongodb'
 import dotenv from 'dotenv'
 import * as deepl from 'deepl-node'
 import * as EmbedUtils from './embedutils'
+import * as TranslationUtils from './translationUtils'
 import * as ChannelIds from './channelids'
 import { SourceLanguageCode, TargetLanguageCode } from 'deepl-node'
+import { google } from '@google-cloud/translate/build/protos/protos'
 dotenv.config()
 
 const {Translate} = require('@google-cloud/translate').v2;
@@ -31,9 +33,29 @@ let chineseChannel: TextChannel
 let koreanChannel: TextChannel
 
 const mongoClient = new MongoClient(process.env.MONGO_DB_URI || "");
+const googleUsage = {
+    characterUsed: 0,
+    characterLimit: 0
+}
 
 client.on('ready', () => {
     console.log("Bot is ready!");
+    mongoClient.connect();
+
+    (async () => {
+        const googleUsageFromDB = await getGoogleUsage();
+
+        if (!googleUsageFromDB) {
+            (client.channels.cache.get('') as TextChannel).send({
+                embeds: [new MessageEmbed().setDescription("Could not load Google's usage from database.").setColor('BLUE')]
+            });
+            return;
+        }
+
+        googleUsage.characterUsed = googleUsageFromDB.characterUsed;
+        googleUsage.characterLimit = googleUsageFromDB.characterLimit;
+    })();
+
     englishChannel = client.channels.cache.get(ChannelIds.english) as TextChannel;
     chineseChannel = client.channels.cache.get(ChannelIds.chinese) as TextChannel;
     koreanChannel = client.channels.cache.get(ChannelIds.korean) as TextChannel;
@@ -80,30 +102,18 @@ client.on('interactionCreate', async (interaction) => {
 
     if (commandName === 'google-usage') {
         (async () => {
-            try {
-                mongoClient.connect();
-                
-                const usage = await mongoClient.db("Zekuru").collection("TranslationUsage").findOne({
-                    translator: "Google"
-                });
+            const usage = await getGoogleUsage();
 
-                if (usage) {
-                    interaction.reply({
-                        embeds: [EmbedUtils.createTranslatorUsageEmbed("Google's Cloud Translate", usage.characterUsed, usage.characterLimit)]
-                    })
-                }
-                else {
-                    interaction.reply({
-                        content: "Could not fetch Google's translator usage from MongoDB! Check the source code."
-                    })
-                }
-            }
-            catch (e) {
-                console.error(e);
+            if (usage === null || usage === undefined) {
                 interaction.reply({
-                    content: "An error has occurred fetching Google's translator usage from MongoDB! Check the logs."
-                })
+                    embeds: [new MessageEmbed().setDescription("Could not fetch usage on Google's Translation API! Check the logs.").setColor('BLUE')]
+                });
+                return;
             }
+
+            interaction.reply({
+                embeds: [EmbedUtils.createTranslatorUsageEmbed("Google's Cloud Translate", usage.characterUsed, usage.characterLimit)]
+            })
         })();
     }
 })
@@ -113,90 +123,131 @@ client.on('messageCreate', (message) => {
     if (!(message.channelId === ChannelIds.english || message.channelId === ChannelIds.chinese || message.channelId === ChannelIds.korean)) return;
 
     if (message.channelId === ChannelIds.english) {
-        deeplTranslate(message, chineseChannel, 'en', 'zh');
-        googleTranslate(message, koreanChannel, 'ko');
+        deeplTranslate(message, chineseChannel, "#english-auto", 'en', 'zh');
+        googleTranslate(message, koreanChannel, "#english-auto", 'ko');
         return;
     }
 
     if (message.channelId === ChannelIds.chinese) {
-        deeplTranslate(message, englishChannel, 'zh', 'en-US');
-        googleTranslate(message, koreanChannel, 'ko');
+        deeplTranslate(message, englishChannel, "#chinese-auto", 'zh', 'en-US');
+        googleTranslate(message, koreanChannel, "#chinese-auto", 'ko');
         return;
     }
 
     if (message.channelId === ChannelIds.korean) {
-        googleTranslate(message, englishChannel, 'en');
-        googleTranslate(message, chineseChannel, 'zh');
+        googleTranslate(message, englishChannel, "#korean-auto", 'en');
+        googleTranslate(message, chineseChannel, "#korean-auto", 'zh');
         return;
     }
 })
 
-function sendTranslationToChannel(message: DiscordJS.Message, channel: TextChannel, translator: string, translated: string) {
-    const embed = EmbedUtils.createTranslatedMessageEmbed(message, translator, translated);
+function sendTranslationToChannel(message: DiscordJS.Message, channel: TextChannel, translatedText: string, sourceChannelName: string, translator: string) {
+    const embed = EmbedUtils.createTranslatedMessageEmbed(message, translatedText, sourceChannelName, translator);
     channel.send({
         embeds: [embed]
     });
 }
 
-async function connectAndUpdateGoogleUsage(message: DiscordJS.Message) {
+async function getGoogleUsage() {
+    const usage = await mongoClient.db("Zekuru").collection("TranslationUsage").findOne({
+        translator: "Google"
+    });
+    return usage;
+}
+
+async function deeplTranslate(message: DiscordJS.Message, destinationChannel: TextChannel, sourceChannelName: string, originalLang: SourceLanguageCode, targetLang: TargetLanguageCode) {
     try {
-        mongoClient.connect();
-        const usage = await mongoClient.db("Zekuru").collection("TranslationUsage").findOne({
-            translator: "Google"
+        const usage = await deeplTranslator.getUsage();
+        
+        if (!usage.character) {
+            message.channel.send({
+                embeds: [new MessageEmbed().setDescription("Could not check if there are still available characters on DeepL translation service! Check the logs.").setColor('BLUE')]
+            });
+            return;
+        }
+
+        if ((usage.character.count + message.content.length) > usage.character.limit) {
+            message.channel.send({
+                embeds: [new MessageEmbed().setDescription("Uh oh! Cannot translate anymore using DeepL's translation API. The limit will be reached!").setColor('BLUE')]
+            });
+            return;
+        }
+
+        const processedMessage = TranslationUtils.prepareForTranslation(message.content);
+        const result = await deeplTranslator.translateText(processedMessage.processedText, originalLang, targetLang);
+        sendTranslationToChannel(message, destinationChannel, TranslationUtils.returnEmojisToTranslation(result.text, processedMessage.emojiTable), sourceChannelName, "DeepL");
+    }
+    catch (e) {
+        console.error(e);
+        message.channel.send({
+            embeds: [new MessageEmbed().setDescription("An error has occurred while processing translation using DeepL's translation API! Check the logs.").setColor('BLUE')]
+        });
+    }
+}
+
+async function googleTranslate(message: DiscordJS.Message, destinationChannel: TextChannel, sourceChannelName: string, targetLang: string) {
+    try {
+        if ((googleUsage.characterUsed + message.content.length) > googleUsage.characterLimit) {
+            message.channel.send({
+                embeds: [new MessageEmbed().setDescription("Uh oh! Cannot translate anymore using Google's Cloud Translate API. The limit will be reached!").setColor('BLUE')]
+            });
+            return;
+        }
+
+        const processedMessage = TranslationUtils.prepareForTranslation(message.content);
+        const [translation] = await googleTranslator.translate(processedMessage.processedText, targetLang);
+        sendTranslationToChannel(message, destinationChannel, TranslationUtils.returnEmojisToTranslation(translation, processedMessage.emojiTable), sourceChannelName, "Google");
+        
+        mongoClient.db("Zekuru").collection("GoogleTranslateUsageEntries").insertOne({
+            time: message.createdTimestamp,
+            charCount: message.content.length,
+            content: message.content
         });
 
-        if (usage) {
-            usage.characterUsed += message.content.length;
-            await mongoClient.db("Zekuru").collection("TranslationUsage").updateOne(
-                {
-                    translator: "Google"
-                },
-                {
-                    $set: usage
-                },
-                {
-                    upsert: true
-                });
-        }
-        else {
-            message.reply({
-                content: "Could not connect to MongoDB! Check the source code."
-            })
-        }
-    }
-    catch (e) {
-        console.error(e);
-        message.reply({
-            content: "An error has occurred connecting to MongoDB! Check the logs."
-        })
-    }
-}
+        const usage = await getGoogleUsage();
 
-async function deeplTranslate(message: DiscordJS.Message, destination: TextChannel, originalLang: SourceLanguageCode, targetLang: TargetLanguageCode) {
-    try {
-        const result = await deeplTranslator.translateText(message.content, originalLang, targetLang);
-        sendTranslationToChannel(message, destination, "DeepL Translation API", result.text);
+        if (usage === null || usage === undefined) {
+            message.channel.send({
+                embeds: [new MessageEmbed().setDescription("Could not check if there are still available characters on Google's Cloud Translate API! Check the logs.").setColor('BLUE')]
+            });
+            return;
+        }
+
+        updateGoogleTotalUsageCount(usage);
     }
     catch (e) {
         console.error(e);
         message.channel.send({
-            content: "An error has occurred while processing translation using Google's Cloud Translation API! Check the logs."
-        })
+            embeds: [new MessageEmbed().setDescription("An error has occurred while processing translation using Google's Cloud Translation API! Check the logs.").setColor('BLUE')]
+        });
     }
 }
 
-async function googleTranslate(message: DiscordJS.Message, destination: TextChannel, targetLang: string) {
-    connectAndUpdateGoogleUsage(message);
-    try {
-        const [translation] = await googleTranslator.translate(message.content, targetLang);
-        sendTranslationToChannel(message, destination, "Google's Cloud Translation API", translation);
-    }
-    catch (e) {
-        console.error(e);
-        message.channel.send({
-            content: "An error has occurred while processing translation using Google's Cloud Translation API! Check the logs."
+async function updateGoogleTotalUsageCount(usage: any) {
+    const cursor = mongoClient.db("Zekuru").collection("GoogleTranslateUsageEntries").find();
+    
+    const results = await cursor.toArray();
+
+    usage.characterUsed = 0;
+    if (results.length > 0) {
+        results.forEach((result, i) => {
+            usage.characterUsed += Number(result.charCount);
         })
     }
+
+    googleUsage.characterUsed = usage.characterUsed;
+    googleUsage.characterLimit = usage.characterLimit;
+
+    await mongoClient.db("Zekuru").collection("TranslationUsage").updateOne(
+        {
+            translator: "Google"
+        },
+        {
+            $set: usage
+        },
+        {
+            upsert: true
+        });
 }
 
 client.login(process.env.TOKEN)

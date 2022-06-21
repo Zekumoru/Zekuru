@@ -1,15 +1,15 @@
 import DiscordJS, { MessageEmbed } from 'discord.js'
 
-export function createTranslatedMessageEmbed(message: DiscordJS.Message, translator: string, translated: string) {
+export function createTranslatedMessageEmbed(message: DiscordJS.Message, translatedText: string, sourceChannelName: string, translator: string) {
     const embed = new MessageEmbed()
         .setAuthor({
             name: message.author.username,
             iconURL: message.author.avatarURL() || ""
         })
-        .setDescription(translated)
+        .setDescription(translatedText)
         .setColor('BLUE')
         .setFooter({
-            text: "Translated using " + translator
+            text: `Translated from ${sourceChannelName} using ${translator}`
         })
     return embed;
 }
