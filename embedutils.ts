@@ -1,16 +1,17 @@
 import DiscordJS, { MessageEmbed } from 'discord.js'
 
-export function createTranslatedMessageEmbed(message: DiscordJS.Message, translatedText: string, sourceChannelName: string, translator: string) {
+export async function createTranslatedMessageEmbed(message: DiscordJS.Message, translatedText: string, sourceChannelName: string, translator: string) {
+    const member = await message.guild?.members.fetch(message.author.id);
     const embed = new MessageEmbed()
         .setAuthor({
-            name: message.author.username,
-            iconURL: message.author.avatarURL() || ""
+            name: member?.displayName || message.author.username,
+            iconURL: member?.avatarURL() || message.author.avatarURL() || ""
         })
         .setDescription(translatedText)
         .setColor('BLUE')
         .setFooter({
             text: `Translated from ${sourceChannelName} using ${translator}`
-        })
+        });
     return embed;
 }
 

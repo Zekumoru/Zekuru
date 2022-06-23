@@ -142,10 +142,12 @@ client.on('messageCreate', (message) => {
 })
 
 function sendTranslationToChannel(message: DiscordJS.Message, channel: TextChannel, translatedText: string, sourceChannelName: string, translator: string) {
-    const embed = EmbedUtils.createTranslatedMessageEmbed(message, translatedText, sourceChannelName, translator);
-    channel.send({
+    (async () => {
+        const embed = await EmbedUtils.createTranslatedMessageEmbed(message, translatedText, sourceChannelName, translator);
+        channel.send({
         embeds: [embed]
-    });
+        });
+    })();
 }
 
 async function getGoogleUsage() {
