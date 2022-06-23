@@ -174,7 +174,15 @@ async function deeplTranslate(message: DiscordJS.Message, destinationChannel: Te
         }
 
         const processedMessage = TranslationUtils.prepareForTranslation(message.content);
-        const result = await deeplTranslator.translateText(processedMessage.processedText, originalLang, targetLang);
+
+        let result;
+        if (message.content) {
+            result = await deeplTranslator.translateText(processedMessage.processedText, originalLang, targetLang);
+        }
+        else {
+            result = { text: "" };
+        }
+
         sendTranslationToChannel(message, destinationChannel, TranslationUtils.returnEmojisToTranslation(result.text, processedMessage.emojiTable), sourceChannelName, "DeepL");
     }
     catch (e) {
