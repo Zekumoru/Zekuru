@@ -7,6 +7,7 @@ import * as TranslationUtils from './translationUtils'
 import * as ChannelIds from './channelids'
 import { SourceLanguageCode, TargetLanguageCode } from 'deepl-node'
 import { google } from '@google-cloud/translate/build/protos/protos'
+import { Stream } from 'stream'
 dotenv.config()
 
 const {Translate} = require('@google-cloud/translate').v2;
@@ -142,12 +143,24 @@ client.on('messageCreate', (message) => {
 })
 
 function sendTranslationToChannel(message: DiscordJS.Message, channel: TextChannel, translatedText: string, sourceChannelName: string, translator: string) {
-    (async () => {
-        const embed = await EmbedUtils.createTranslatedMessageEmbed(message, translatedText, sourceChannelName, translator);
-        channel.send({
-        embeds: [embed]
+    if (translatedText) {
+        (async () => {
+            const embed = await EmbedUtils.createTranslatedMessageEmbed(message, translatedText, sourceChannelName, translator);
+            channel.send({
+                embeds: [embed]
+            });
+        })();
+    }
+
+    if (message.attachments.size > 0) {
+        let attachments: (DiscordJS.BufferResolvable | Stream)[] = [];
+        message.attachments.forEach((attachment) => {
+            attachments.push(attachment.attachment);
         });
-    })();
+        channel.send({
+            files: attachments
+        });
+    }
 }
 
 async function getGoogleUsage() {
@@ -159,33 +172,31 @@ async function getGoogleUsage() {
 
 async function deeplTranslate(message: DiscordJS.Message, destinationChannel: TextChannel, sourceChannelName: string, originalLang: SourceLanguageCode, targetLang: TargetLanguageCode) {
     try {
-        const usage = await deeplTranslator.getUsage();
-        
-        if (!usage.character) {
-            message.channel.send({
-                embeds: [new MessageEmbed().setDescription("Could not check if there are still available characters on DeepL translation service! Check the logs.").setColor('BLUE')]
-            });
-            return;
-        }
-
-        if ((usage.character.count + message.content.length) > usage.character.limit) {
-            message.channel.send({
-                embeds: [new MessageEmbed().setDescription("Uh oh! Cannot translate anymore using DeepL's translation API. The limit will be reached!").setColor('BLUE')]
-            });
-            return;
-        }
-
+        let translation = "";
         const processedMessage = TranslationUtils.prepareForTranslation(message.content);
-
-        let result;
+        
         if (message.content) {
-            result = await deeplTranslator.translateText(processedMessage.processedText, originalLang, targetLang);
-        }
-        else {
-            result = { text: "" };
+            const usage = await deeplTranslator.getUsage();
+            
+            if (!usage.character) {
+                message.channel.send({
+                    embeds: [new MessageEmbed().setDescription("Could not check if there are still available characters on DeepL translation service! Check the logs.").setColor('BLUE')]
+                });
+                return;
+            }
+
+            if ((usage.character.count + message.content.length) > usage.character.limit) {
+                message.channel.send({
+                    embeds: [new MessageEmbed().setDescription("Uh oh! Cannot translate anymore using DeepL's translation API. The limit will be reached!").setColor('BLUE')]
+                });
+                return;
+            }
+
+            const result = await deeplTranslator.translateText(processedMessage.processedText, originalLang, targetLang);
+            translation = result.text;
         }
 
-        sendTranslationToChannel(message, destinationChannel, TranslationUtils.returnEmojisToTranslation(result.text, processedMessage.emojiTable), sourceChannelName, "DeepL");
+        sendTranslationToChannel(message, destinationChannel, TranslationUtils.returnEmojisToTranslation(translation, processedMessage.emojiTable), sourceChannelName, "DeepL");
     }
     catch (e) {
         console.error(e);
@@ -197,17 +208,24 @@ async function deeplTranslate(message: DiscordJS.Message, destinationChannel: Te
 
 async function googleTranslate(message: DiscordJS.Message, destinationChannel: TextChannel, sourceChannelName: string, targetLang: string) {
     try {
-        if ((googleUsage.characterUsed + message.content.length) > googleUsage.characterLimit) {
-            message.channel.send({
-                embeds: [new MessageEmbed().setDescription("Uh oh! Cannot translate anymore using Google's Cloud Translate API. The limit will be reached!").setColor('BLUE')]
-            });
-            return;
-        }
-
         const processedMessage = TranslationUtils.prepareForTranslation(message.content);
-        const [translation] = await googleTranslator.translate(processedMessage.processedText, targetLang);
-        sendTranslationToChannel(message, destinationChannel, TranslationUtils.returnEmojisToTranslation(translation, processedMessage.emojiTable), sourceChannelName, "Google");
+        let processedTranslation = "";
+
+        if (message.content) {
+            if ((googleUsage.characterUsed + message.content.length) > googleUsage.characterLimit) {
+                message.channel.send({
+                    embeds: [new MessageEmbed().setDescription("Uh oh! Cannot translate anymore using Google's Cloud Translate API. The limit will be reached!").setColor('BLUE')]
+                });
+                return;
+            }
+    
+            const [translation] = await googleTranslator.translate(processedMessage.processedText, targetLang);
+            processedTranslation = TranslationUtils.returnEmojisToTranslation(translation, processedMessage.emojiTable);
+        }
         
+        sendTranslationToChannel(message, destinationChannel, processedTranslation, sourceChannelName, "Google");
+        if (!processedTranslation) return;
+
         mongoClient.db("Zekuru").collection("GoogleTranslateUsageEntries").insertOne({
             time: message.createdTimestamp,
             charCount: processedMessage.processedText.length,
