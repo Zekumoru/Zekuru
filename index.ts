@@ -200,7 +200,7 @@ async function googleTranslate(message: DiscordJS.Message, destinationChannel: T
         
         mongoClient.db("Zekuru").collection("GoogleTranslateUsageEntries").insertOne({
             time: message.createdTimestamp,
-            charCount: message.content.length,
+            charCount: processedMessage.processedText.length,
             content: message.content
         });
 
