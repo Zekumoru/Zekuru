@@ -29,9 +29,9 @@ const client = new DiscordJS.Client({
     ]
 })
 
-let englishChannel: TextChannel
-let chineseChannel: TextChannel
-let koreanChannel: TextChannel
+var englishChannel: TextChannel;
+var chineseChannel: TextChannel;
+var koreanChannel: TextChannel;
 
 const mongoClient = new MongoClient(process.env.MONGO_DB_URI || "");
 const googleUsage = {
@@ -56,10 +56,6 @@ client.on('ready', () => {
         googleUsage.characterUsed = googleUsageFromDB.characterUsed;
         googleUsage.characterLimit = googleUsageFromDB.characterLimit;
     })();
-
-    englishChannel = client.channels.cache.get(ChannelIds.english) as TextChannel;
-    chineseChannel = client.channels.cache.get(ChannelIds.chinese) as TextChannel;
-    koreanChannel = client.channels.cache.get(ChannelIds.korean) as TextChannel;
 })
 
 function setupDiscordCommands() {
@@ -121,21 +117,27 @@ client.on('interactionCreate', async (interaction) => {
 
 client.on('messageCreate', (message) => {
     if (message.author.bot) return;
-    if (!(message.channelId === ChannelIds.english || message.channelId === ChannelIds.chinese || message.channelId === ChannelIds.korean)) return;
 
-    if (message.channelId === ChannelIds.english) {
+    const guildTranslate = ChannelIds.findGuild(message.guildId || "");
+    if (!guildTranslate) return;
+
+    englishChannel = client.channels.cache.get(guildTranslate.channelsId.english) as TextChannel;
+    chineseChannel = client.channels.cache.get(guildTranslate.channelsId.chinese) as TextChannel;
+    koreanChannel = client.channels.cache.get(guildTranslate.channelsId.korean) as TextChannel;
+    
+    if (message.channelId === guildTranslate.channelsId.english) {
         deeplTranslate(message, chineseChannel, "#english-auto", 'en', 'zh');
         googleTranslate(message, koreanChannel, "#english-auto", 'ko');
         return;
     }
 
-    if (message.channelId === ChannelIds.chinese) {
+    if (message.channelId === guildTranslate.channelsId.chinese) {
         deeplTranslate(message, englishChannel, "#chinese-auto", 'zh', 'en-US');
         googleTranslate(message, koreanChannel, "#chinese-auto", 'ko');
         return;
     }
 
-    if (message.channelId === ChannelIds.korean) {
+    if (message.channelId === guildTranslate.channelsId.korean) {
         googleTranslate(message, englishChannel, "#korean-auto", 'en');
         googleTranslate(message, chineseChannel, "#korean-auto", 'zh');
         return;
