@@ -26,6 +26,15 @@ export const guilds = [
             korean: '989619127960350770'
         }
     },
+    {
+        name: 'TWMaster',
+        id: '973450494808834058',
+        channelsId: {
+            english: '990605131802361886',
+            chinese: '990605158457180191',
+            korean: '990605196918939650'
+        }
+    }
 ];
 
 export function findGuild(guildId: string) {
