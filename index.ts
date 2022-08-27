@@ -12,7 +12,7 @@ import { channel } from 'diagnostics_channel'
 dotenv.config()
 
 const {Translate} = require('@google-cloud/translate').v2;
-const CREDENTIALS = JSON.parse(process.env.GOOGLE_CREDENTIALS ?? "")
+const CREDENTIALS = JSON.parse(process.env.GOOGLE_CREDENTIALS ?? "");
 const googleTranslator = new Translate({
     credentials: CREDENTIALS,
     projectId: CREDENTIALS.project_id
