@@ -8,6 +8,7 @@ import * as ChannelIds from './channelids'
 import { SourceLanguageCode, TargetLanguageCode } from 'deepl-node'
 import { google } from '@google-cloud/translate/build/protos/protos'
 import { Stream } from 'stream'
+import { channel } from 'diagnostics_channel'
 dotenv.config()
 
 const {Translate} = require('@google-cloud/translate').v2;
@@ -69,21 +70,21 @@ function setupDiscordCommands() {
         commands = client.application?.commands
     }
 
-    commands?.create({
-        name: 'deepl-usage',
-        description: "Returns the usage count for DeepL's translation service."
-    })
+    // commands?.create({
+    //     name: 'deepl-usage',
+    //     description: "Returns the usage count for DeepL's translation service."
+    // })
 
-    commands?.create({
-        name: 'google-usage',
-        description: "Returns the usage count for Google's Cloud Translate's translation service."
-    })
+    // commands?.create({
+    //     name: 'google-usage',
+    //     description: "Returns the usage count for Google's Cloud Translate's translation service."
+    // })
 }
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isCommand()) return;
 
-    const { commandName, options } = interaction
+    const { commandName } = interaction
 
     if (commandName === 'deepl-usage') {
         (async () => {
@@ -120,6 +121,13 @@ client.on('messageCreate', (message) => {
 
     const guildTranslate = ChannelIds.findGuild(message.guildId || "");
     if (!guildTranslate) return;
+
+    if (message.content.length > 0 && message.content[0] === '!') {
+      const [command, ...args] = message.content.slice(1).split(' ');
+      
+      message.reply(`The command: \`${command}\` does not exist!`)
+      return;
+    }
 
     englishChannel = client.channels.cache.get(guildTranslate.channelsId.english) as TextChannel;
     chineseChannel = client.channels.cache.get(guildTranslate.channelsId.chinese) as TextChannel;
