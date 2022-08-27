@@ -155,12 +155,22 @@ function sendTranslationToChannel(message: DiscordJS.Message, channel: TextChann
     }
 
     if (message.attachments.size > 0) {
-        let attachments: (DiscordJS.BufferResolvable | Stream)[] = [];
+        const DiscordUploadSizeLimit = 8388608;
+        let attachments: (DiscordJS.MessageAttachment)[] = [];
         message.attachments.forEach((attachment) => {
-            attachments.push(attachment.attachment);
+            attachments.push(attachment);
         });
-        channel.send({
-            files: attachments
+        attachments.forEach((attachment) => {
+          if (attachment.size < DiscordUploadSizeLimit) {
+            channel.send({
+              files: [attachment]
+            });
+            return;
+          }
+
+          channel.send({
+            content: attachment.proxyURL
+          });
         });
     }
 }
